@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="*" Name="WASP" Language="1033" Version="1.0.0.0" Manufacturer="Your Company Name" UpgradeCode="PUT-GUID-HERE">
+        <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
+
+        <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+        <MediaTemplate EmbedCab="yes" />
+
+        <Feature Id="ProductFeature" Title="WASP" Level="1">
+            <ComponentGroupRef Id="ProductComponents" />
+        </Feature>
+    </Product>
+
+    <Fragment>
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <Directory Id="ProgramFilesFolder">
+                <Directory Id="INSTALLFOLDER" Name="WASP" />
+            </Directory>
+        </Directory>
+    </Fragment>
+
+    <Fragment>
+        <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+            <Component Id="WASPExecutable" Guid="*">
+                <File Id="WASPExe" Name="wasp.exe" Source="$(var.BinDir)\wasp.exe" KeyPath="yes" />
+            </Component>
+            <Component Id="WASPConfig" Guid="*">
+                <File Id="ConfigFile" Name="config.toml" Source="$(var.ConfigDir)\config.toml" KeyPath="yes" />
+            </Component>
+        </ComponentGroup>
+    </Fragment>
+</Wix>

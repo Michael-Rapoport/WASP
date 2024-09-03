@@ -1,19 +1,8 @@
 use serde::Deserialize;
 use std::time::Duration;
-use std::net::SocketAddr;
-use thiserror::Error;
+use config::{Config as ConfigLoader, File, Environment};
 
-#[derive(Error, Debug)]
-pub enum ConfigError {
-    #[error("Configuration error: {0}")]
-    ConfigurationError(String),
-    #[error("Invalid address: {0}")]
-    InvalidAddress(#[from] std::net::AddrParseError),
-    #[error("Environment error: {0}")]
-    EnvironmentError(#[from] config::ConfigError),
-}
-
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct Config {
     pub listen_addr: String,
     pub node_id: String,
@@ -24,66 +13,38 @@ pub struct Config {
     pub max_packet_size: usize,
     pub operation_time: Duration,
     pub network_config: NetworkConfig,
+    pub jwt_secret: String,
+    pub database_url: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct NetworkConfig {
     pub bootstrap_nodes: Vec<String>,
     pub max_connections: usize,
 }
 
 impl Config {
-    pub fn from_env() -> Result<Self, ConfigError> {
-        let mut cfg = config::Config::new();
-        cfg.merge(config::Environment::new())?;
-        let config: Config = cfg.try_into()?;
-        config.validate()?;
-        Ok(config)
-    }
+    pub fn from_env() -> Result<Self, config::ConfigError> {
+        let mut config = ConfigLoader::default();
 
-    fn validate(&self) -> Result<(), ConfigError> {
-        // Validate listen_addr
-        self.listen_addr.parse::<SocketAddr>()?;
+        // Start off by merging in the "default" configuration file
+        config.merge(File::with_name("config/default"))?;
 
-        // Validate node_id
-        if self.node_id.is_empty() {
-            return Err(ConfigError::ConfigurationError("node_id cannot be empty".to_string()));
-        }
+        // Add in the current environment file
+        // Default to 'development' env
+        // Note that this file is _optional_
+        let env = std::env::var("RUN_MODE").unwrap_or_else(|_| "development".into());
+        config.merge(File::with_name(&format!("config/{}", env)).required(false))?;
 
-        // Validate delays
-        if self.min_delay > self.max_delay {
-            return Err(ConfigError::ConfigurationError("min_delay cannot be greater than max_delay".to_string()));
-        }
+        // Add in a local configuration file
+        // This file shouldn't be checked in to git
+        config.merge(File::with_name("config/local").required(false))?;
 
-        // Validate packet sizes
-        if self.min_packet_size > self.max_packet_size {
-            return Err(ConfigError::ConfigurationError("min_packet_size cannot be greater than max_packet_size".to_string()));
-        }
+        // Add in settings from the environment (with a prefix of WASP)
+        // Eg.. `WASP_DEBUG=1 ./target/app` would set the `debug` key
+        config.merge(Environment::with_prefix("WASP"))?;
 
-        // Validate operation_time
-        if self.operation_time == Duration::from_secs(0) {
-            return Err(ConfigError::ConfigurationError("operation_time must be greater than zero".to_string()));
-        }
-
-        // Validate network config
-        self.network_config.validate()?;
-
-        Ok(())
-    }
-}
-
-impl NetworkConfig {
-    fn validate(&self) -> Result<(), ConfigError> {
-        // Validate bootstrap_nodes
-        for node in &self.bootstrap_nodes {
-            node.parse::<SocketAddr>()?;
-        }
-
-        // Validate max_connections
-        if self.max_connections == 0 {
-            return Err(ConfigError::ConfigurationError("max_connections must be greater than zero".to_string()));
-        }
-
-        Ok(())
+        // Now that we're done, let's access our configuration
+        config.try_into()
     }
 }
